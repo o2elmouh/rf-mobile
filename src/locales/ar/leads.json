@@ -1,0 +1,86 @@
+{
+  "title": "الطلبات",
+  "subtitle": "طلبات من واتساب وGmail",
+  "refresh": "تحديث",
+  "empty": "لا توجد طلبات حالياً.",
+  "tabs": {
+    "pending": "جديدة",
+    "waiting": "في انتظار عرض",
+    "offer_sent": "تم إرسال العرض",
+    "accepted": "مقبولة",
+    "ignored": "متجاهلة"
+  },
+  "classification": {
+    "new_lead": "طلب جديد",
+    "prolongation": "تمديد",
+    "support_issue": "مشكلة",
+    "other": "أخرى"
+  },
+  "status": {
+    "pending": "قيد الانتظار",
+    "waiting": "في انتظار عرض",
+    "offer_sent": "تم إرسال العرض",
+    "accepted": "مقبول",
+    "processed": "تمت المعالجة",
+    "ignored": "متجاهل",
+    "converted": "محوّل"
+  },
+  "source": {
+    "whatsapp": "واتساب",
+    "gmail": "Gmail"
+  },
+  "detail": {
+    "extracted": "البيانات المستخرجة",
+    "summary": "ملخّص",
+    "conversation": "المحادثة",
+    "noImages": "لا توجد صور",
+    "noConversation": "لا توجد رسائل",
+    "noExtractedData": "لا توجد بيانات",
+    "saveCorrections": "حفظ التعديلات",
+    "saving": "جاري الحفظ…",
+    "saved": "تم الحفظ ✓",
+    "ignore": "تجاهل",
+    "prepareQuote": "💬 تحضير عرض",
+    "convertToContract": "تحويل إلى عقد ←",
+    "acceptedNote": "قبل العميل العرض — يمكنك تحويله إلى عقد.",
+    "clientReply": "الرد: « {{text}} »",
+    "matchScore": "تطابق محتمل ({{pct}}%)"
+  },
+  "fields": {
+    "firstName": "الاسم",
+    "lastName": "اللقب",
+    "documentNumber": "رقم الوثيقة",
+    "dateOfBirth": "تاريخ الميلاد",
+    "expiryDate": "الانتهاء",
+    "documentType": "النوع",
+    "issuingCountry": "البلد",
+    "requestedCar": "السيارة المطلوبة",
+    "startDate": "تاريخ البداية",
+    "endDate": "تاريخ النهاية",
+    "pickupLocation": "مكان الاستلام",
+    "returnLocation": "مكان الإرجاع",
+    "requestedExtraDays": "أيام إضافية"
+  },
+  "prolongationIgnore": "تجاهل",
+  "prolongationRefuse": "رفض",
+  "prolongationCTA": "تمديد العقد ←",
+  "prolongationLinkedContract": "عقد {{number}} — انتهاء {{end}} — {{client}}",
+  "prolongationPickContract": "أي عقد تريد تمديده؟",
+  "quote": {
+    "title": "عرض سريع",
+    "vehicle": "السيارة المتوفرة",
+    "chooseVehicle": "— اختر سيارة —",
+    "noVehicles": "⚠ لا توجد سيارة متاحة لهذه التواريخ",
+    "startDate": "تاريخ البداية",
+    "endDate": "تاريخ النهاية",
+    "price": "السعر الإجمالي (درهم)",
+    "pricePlaceholder": "مثال: 1500",
+    "notes": "تفاصيل إضافية (اختياري)",
+    "notesPlaceholder": "مثال: كيلومترات غير محدودة، التوصيل…",
+    "send": "إرسال العرض",
+    "sendWhatsapp": "📲 إرسال العرض عبر واتساب",
+    "sendEmail": "📧 إرسال العرض بالبريد",
+    "sending": "جاري الإرسال…",
+    "done": "✅ تم إرسال العرض عبر {{channel}}. في انتظار الرد."
+  }
+}

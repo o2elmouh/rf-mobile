@@ -1,0 +1,86 @@
+{
+  "title": "Demandes",
+  "subtitle": "Leads WhatsApp et Gmail",
+  "refresh": "Actualiser",
+  "empty": "Aucune demande pour l'instant.",
+  "tabs": {
+    "pending": "Nouveaux",
+    "waiting": "Devis à préparer",
+    "offer_sent": "Offre envoyée",
+    "accepted": "Acceptés",
+    "ignored": "Ignorés"
+  },
+  "classification": {
+    "new_lead": "Nouveau lead",
+    "prolongation": "Prolongation",
+    "support_issue": "Incident",
+    "other": "Autre"
+  },
+  "status": {
+    "pending": "En attente",
+    "waiting": "Devis à préparer",
+    "offer_sent": "Offre envoyée",
+    "accepted": "Accepté",
+    "processed": "Traité",
+    "ignored": "Ignoré",
+    "converted": "Converti"
+  },
+  "source": {
+    "whatsapp": "WhatsApp",
+    "gmail": "Gmail"
+  },
+  "detail": {
+    "extracted": "Données extraites",
+    "summary": "Résumé",
+    "conversation": "Conversation",
+    "noImages": "Aucune image jointe",
+    "noConversation": "Aucun message",
+    "noExtractedData": "Aucune donnée extraite",
+    "saveCorrections": "Enregistrer les corrections",
+    "saving": "Enregistrement…",
+    "saved": "Enregistré ✓",
+    "ignore": "Ignorer",
+    "prepareQuote": "💬 Préparer un devis",
+    "convertToContract": "Convertir en contrat →",
+    "acceptedNote": "Le client a accepté l'offre — vous pouvez convertir en contrat.",
+    "clientReply": "Réponse : « {{text}} »",
+    "matchScore": "Correspondance probable ({{pct}}%)"
+  },
+  "fields": {
+    "firstName": "Prénom",
+    "lastName": "Nom",
+    "documentNumber": "N° document",
+    "dateOfBirth": "Date de naissance",
+    "expiryDate": "Expiration",
+    "documentType": "Type",
+    "issuingCountry": "Pays émetteur",
+    "requestedCar": "Véhicule demandé",
+    "startDate": "Date de début",
+    "endDate": "Date de fin",
+    "pickupLocation": "Lieu de récupération",
+    "returnLocation": "Lieu de retour",
+    "requestedExtraDays": "Jours supplémentaires"
+  },
+  "prolongationIgnore": "Ignorer",
+  "prolongationRefuse": "Refuser",
+  "prolongationCTA": "Prolonger contrat →",
+  "prolongationLinkedContract": "Contrat {{number}} — fin {{end}} — {{client}}",
+  "prolongationPickContract": "Quel contrat prolonger ?",
+  "quote": {
+    "title": "Devis rapide",
+    "vehicle": "Véhicule disponible",
+    "chooseVehicle": "— Choisir un véhicule —",
+    "noVehicles": "⚠ Aucun véhicule disponible pour ces dates",
+    "startDate": "Date de début",
+    "endDate": "Date de fin",
+    "price": "Prix total (MAD)",
+    "pricePlaceholder": "Ex : 1500",
+    "notes": "Détails supplémentaires (optionnel)",
+    "notesPlaceholder": "Ex : Kilométrage illimité, livraison incluse…",
+    "send": "Envoyer l'offre",
+    "sendWhatsapp": "📲 Envoyer l'offre via WhatsApp",
+    "sendEmail": "📧 Envoyer l'offre par email",
+    "sending": "Envoi…",
+    "done": "✅ Offre envoyée au client via {{channel}}. En attente de sa réponse."
+  }
+}
