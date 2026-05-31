@@ -50,6 +50,10 @@ export default function NewRentalScreen({ navigation, route }) {
   const [lastName,      setLastName]      = useState(prefill?.lastName  || '')
   const [phone,         setPhone]         = useState(prefill?.phone     || '')
   const [email,         setEmail]         = useState(prefill?.email     || '')
+  // v1.14.18: read-only WhatsApp JID from the originating lead. Shown in
+  // Step 1 so the operator can see which @lid privacy sender the lead came
+  // from while still being prompted for a real dialable phone.
+  const whatsappJid = prefill?.whatsappJid || ''
   const [idNumber,      setIdNumber]      = useState(prefill?.cinNumber || '')
   const [cinExpiry,     setCinExpiry]     = useState(prefill?.cinExpiry || '')
   const [birthDate,     setBirthDate]     = useState(prefill?.dateOfBirth || '')
@@ -87,6 +91,7 @@ export default function NewRentalScreen({ navigation, route }) {
             lastName={lastName}        setLastName={setLastName}
             phone={phone}              setPhone={setPhone}
             email={email}              setEmail={setEmail}
+            whatsappJid={whatsappJid}
             idNumber={idNumber}        setIdNumber={setIdNumber}
             cinExpiry={cinExpiry}      setCinExpiry={setCinExpiry}
             birthDate={birthDate}      setBirthDate={setBirthDate}

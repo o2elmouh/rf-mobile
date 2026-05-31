@@ -9,6 +9,7 @@ import { getClients } from '../../lib/db'
 import { analyzeDocument } from '../../lib/documentScanner'
 import { normalizeDate, fmtDate } from '../../lib/dates'
 import { colors, radius, spacing, fonts, typography, input, btnPrimary, btnPrimaryText, btnSecondary, btnSecondaryText } from '../../theme'
+import { formatPhone, isLidJid } from '../../lib/phoneFormat'
 import DocumentCameraScreen from './DocumentCameraScreen'
 
 export default function Step1ClientScreen({
@@ -22,6 +23,7 @@ export default function Step1ClientScreen({
   lastName,  setLastName,
   phone,     setPhone,
   email,     setEmail,
+  whatsappJid, // v1.14.18 — read-only, from the originating WhatsApp lead
   idNumber,  setIdNumber,
   cinExpiry, setCinExpiry,
   birthDate, setBirthDate,
@@ -199,6 +201,17 @@ export default function Step1ClientScreen({
               <TextInput style={s.input} placeholder="Prénom *"                       placeholderTextColor={colors.dustTaupe} value={firstName}     onChangeText={setFirstName} />
               <TextInput style={s.input} placeholder="Nom *"                          placeholderTextColor={colors.dustTaupe} value={lastName}      onChangeText={setLastName} />
               <TextInput style={s.input} placeholder="Téléphone *"                    placeholderTextColor={colors.dustTaupe} value={phone}         onChangeText={setPhone} keyboardType="phone-pad" />
+              {whatsappJid ? (
+                <View style={s.waBadge}>
+                  <Text style={s.waBadgeLabel}>📱 Contact WhatsApp (lead)</Text>
+                  <Text style={s.waBadgeValue}>
+                    {isLidJid(whatsappJid) ? whatsappJid : formatPhone(whatsappJid)}
+                  </Text>
+                  {isLidJid(whatsappJid) ? (
+                    <Text style={s.waBadgeHint}>Identifiant masqué — saisis le vrai téléphone ci-dessus pour le SMS de signature.</Text>
+                  ) : null}
+                </View>
+              ) : null}
               <TextInput style={s.input} placeholder="Email"                          placeholderTextColor={colors.dustTaupe} value={email}         onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" autoCorrect={false} />
               <TextInput style={s.input} placeholder="Nationalité"                    placeholderTextColor={colors.dustTaupe} value={nationality}   onChangeText={setNationality} />
               <DatePickerButton label="Date de naissance" value={birthDate}     onPress={() => setDatePickerFor('birth')}   onClear={() => setBirthDate('')} />
@@ -293,6 +306,10 @@ const s = StyleSheet.create({
   newClientText:     { color: colors.ink, fontFamily: fonts.medium, fontSize: 14 },
   form:              { marginBottom: 8 },
   formSection:       { ...typography.eyebrow, marginTop: spacing.md, marginBottom: spacing.sm },
+  waBadge:           { backgroundColor: 'rgba(37,211,102,0.08)', borderRadius: radius.card, padding: spacing.sm, marginTop: -4, marginBottom: spacing.sm, borderLeftWidth: 3, borderLeftColor: '#25D366' },
+  waBadgeLabel:      { color: colors.slate, fontFamily: fonts.medium, fontSize: 11, marginBottom: 2 },
+  waBadgeValue:      { color: colors.ink, fontFamily: fonts.medium, fontSize: 13 },
+  waBadgeHint:       { color: colors.slate, fontFamily: fonts.regular, fontSize: 11, marginTop: 4, fontStyle: 'italic' },
   scanRow:           { flexDirection: 'row', gap: 10, marginBottom: spacing.md },
   scanBtn:           { ...btnPrimary, flex: 1, marginTop: 0, paddingVertical: 13 },
   scanBtnPermis:     { backgroundColor: colors.charcoal, borderColor: colors.charcoal },
