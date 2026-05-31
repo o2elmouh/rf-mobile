@@ -58,5 +58,9 @@ export function buildRentalPrefill(lead, extractedData) {
       returnLocation: ex.return_location || null,
     },
     leadId: lead?.id,
+    // v1.14.15: mirrors web — surface the lead's resolved identity verdict
+    // so the wizard can warn the operator on document mismatch.
+    identityMismatch: ex.identityMismatch === true,
+    identitySource:   ex.identitySource || null,
   }
 }
