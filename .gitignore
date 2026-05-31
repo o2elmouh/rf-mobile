@@ -40,3 +40,14 @@ yarn-error.*
 /ios
 /android
 .env
+
+# IDE
+.idea/
+.vscode/
+
+# React Native devsupport cache
+com.facebook.react.devsupport.*
+
+# Supabase CLI state
+supabase/.temp/
+supabase/.branches/

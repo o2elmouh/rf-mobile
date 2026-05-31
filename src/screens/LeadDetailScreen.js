@@ -6,14 +6,13 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useTranslation } from 'react-i18next'
 import { getLead, updateLeadStatus, updateLeadExtracted, getContractById } from '../lib/db'
+import { formatPhone } from '../lib/phoneFormat'
 import { colors, radius, spacing, fonts, typography } from '../theme'
 import SourceBadge from '../components/SourceBadge'
 import LeadStatusPill from '../components/LeadStatusPill'
 import ConversationThread from '../components/ConversationThread'
 import SmartQuotePanel from '../components/SmartQuotePanel'
 import { buildRentalPrefill } from '../lib/leadToRental'
-
-function formatSenderId(id) { return id ? id.replace(/@.*$/, '') : id }
 
 function ConfBadge({ score }) {
   if (score == null) return null
@@ -169,7 +168,7 @@ export default function LeadDetailScreen({ route, navigation }) {
   const conf = lead.confidence_scores || {}
   const title = (extracted.firstName || extracted.lastName)
     ? `${extracted.firstName || ''} ${extracted.lastName || ''}`.trim()
-    : formatSenderId(lead.sender_id)
+    : formatPhone(lead.sender_id)
   const summary = extracted.summary_for_agent || lead.summary_for_agent
 
   const isRouting   = !!extracted.classification

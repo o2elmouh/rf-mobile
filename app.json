@@ -6,7 +6,28 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
+    "scheme": "rentaflow",
     "newArchEnabled": true,
+    "plugins": [
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow RentaFlow to access your photos for vehicle inspection.",
+          "cameraPermission": "Allow RentaFlow to use your camera to capture vehicle photos."
+        }
+      ],
+      "@react-native-community/datetimepicker",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#e94560",
+          "sounds": []
+        }
+      ],
+      "expo-font",
+      "expo-web-browser"
+    ],
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
@@ -16,6 +37,8 @@
       "supportsTablet": true
     },
     "android": {
+      "package": "com.rentaflow.mobile",
+      "versionCode": 1,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
@@ -24,6 +47,9 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
+    },
+    "extra": {
+      "apiBaseUrl": "https://kiraprojectrentalflowapp-staging.up.railway.app"
     }
   }
 }

@@ -1,94 +1,435 @@
 import { useEffect, useState } from 'react'
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity, RefreshControl } from 'react-native'
+import {
+  View, Text, ScrollView, StyleSheet,
+  TouchableOpacity, RefreshControl,
+} from 'react-native'
+import { Menu } from 'lucide-react-native'
 import { getDashboardStats, getActiveContracts } from '../lib/db'
-import { supabase } from '../lib/supabase'
+import { fmtDate } from '../lib/dates'
+import { useDrawer } from '../navigation/DrawerContext'
+import {
+  colors, radius, spacing, fonts, typography,
+} from '../theme'
 
-function KpiCard({ label, value, color }) {
+// ── Sub-components ─────────────────────────────────────────────────────────
+
+function Eyebrow({ children }) {
   return (
-    <View style={[s.kpi, { borderLeftColor: color }]}>
-      <Text style={s.kpiValue}>{value ?? '—'}</Text>
-      <Text style={s.kpiLabel}>{label}</Text>
+    <View style={s.eyebrowRow}>
+      <View style={s.eyebrowDot} />
+      <Text style={s.eyebrowText}>{children}</Text>
     </View>
   )
 }
 
-export default function DashboardScreen() {
-  const [stats,     setStats]     = useState(null)
-  const [contracts, setContracts] = useState([])
+function KpiCard({ label, value, sub, subColor }) {
+  return (
+    <View style={s.kpi}>
+      <Text style={s.kpiValue}>{value ?? '—'}</Text>
+      <Text style={s.kpiLabel}>{label}</Text>
+      {sub ? (
+        <Text style={[s.kpiSub, subColor && { color: subColor }]}>{sub}</Text>
+      ) : null}
+    </View>
+  )
+}
+
+// Days remaining until return_date (negative = overdue)
+function daysLeft(returnDate) {
+  if (!returnDate) return null
+  const diff = Math.round((new Date(returnDate) - Date.now()) / 86_400_000)
+  return diff
+}
+
+// ── Screen ─────────────────────────────────────────────────────────────────
+
+export default function DashboardScreen({ navigation }) {
+  const { openMenu } = useDrawer()
+
+  const [stats,      setStats]      = useState(null)
+  const [contracts,  setContracts]  = useState([])
   const [refreshing, setRefreshing] = useState(false)
 
   const load = async () => {
     const [s, c] = await Promise.all([getDashboardStats(), getActiveContracts()])
-    setStats(s); setContracts(c || [])
+    setStats(s)
+    setContracts(c || [])
   }
 
   useEffect(() => { load() }, [])
-
   const onRefresh = async () => { setRefreshing(true); await load(); setRefreshing(false) }
 
-  const handleLogout = () => supabase.auth.signOut()
+  // Contracts returning today
+  const today = new Date().toISOString().slice(0, 10)
+  const returnsToday = contracts.filter(c => c.return_date?.slice(0, 10) === today).length
+  const overdue      = contracts.filter(c => daysLeft(c.return_date) < 0).length
 
   return (
-    <ScrollView style={s.container} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#e94560" />}>
+    <ScrollView
+      style={s.container}
+      refreshControl={
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={onRefresh}
+          tintColor={colors.ink}
+        />
+      }
+    >
+      {/* ── Header ── */}
       <View style={s.header}>
         <View>
-          <Text style={s.title}>Tableau de bord</Text>
-          <Text style={s.subtitle}>Vue d'ensemble</Text>
+          <Text style={s.greeting}>Bonjour</Text>
+          <Text style={s.agencyName}>Tableau de bord</Text>
         </View>
-        <TouchableOpacity onPress={handleLogout} style={s.logoutBtn}>
-          <Text style={s.logoutText}>Déconnexion</Text>
+        <TouchableOpacity
+          onPress={openMenu}
+          style={s.menuBtn}
+          activeOpacity={0.75}
+          accessibilityLabel="Ouvrir le menu"
+        >
+          <Menu size={20} color={colors.ink} strokeWidth={1.5} />
         </TouchableOpacity>
       </View>
 
-      <View style={s.kpiRow}>
-        <KpiCard label="Véhicules"    value={stats?.total_vehicles}     color="#e94560" />
-        <KpiCard label="En location"  value={stats?.rented_vehicles}    color="#f59e0b" />
-        <KpiCard label="Disponibles"  value={stats?.available_vehicles} color="#10b981" />
-        <KpiCard label="Clients"      value={stats?.total_clients}      color="#6366f1" />
-      </View>
-
-      <View style={s.revenueCard}>
-        <Text style={s.revenueLabel}>Revenus ce mois</Text>
-        <Text style={s.revenueValue}>{stats?.monthly_revenue ? `${Number(stats.monthly_revenue).toLocaleString()} MAD` : '— MAD'}</Text>
-      </View>
-
-      <Text style={s.sectionTitle}>Contrats actifs ({contracts.length})</Text>
-      {contracts.map(c => (
-        <View key={c.id} style={s.contractCard}>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-            <Text style={s.contractNum}>{c.contract_number}</Text>
-            <View style={s.badge}><Text style={s.badgeText}>Actif</Text></View>
-          </View>
-          <Text style={s.contractDetail}>{c.client_name || '—'}</Text>
-          <Text style={s.contractDetail}>{c.pickup_date} → {c.return_date}</Text>
-          <Text style={s.contractAmount}>{Number(c.total_amount || 0).toLocaleString()} MAD</Text>
+      {/* ── Alert strip (returns today) ── */}
+      {returnsToday > 0 && (
+        <View style={s.alertStrip}>
+          <Text style={s.alertText}>
+            {returnsToday} retour{returnsToday > 1 ? 's' : ''} attendu{returnsToday > 1 ? 's' : ''} aujourd'hui
+          </Text>
         </View>
-      ))}
-      {contracts.length === 0 && <Text style={s.empty}>Aucun contrat actif</Text>}
+      )}
+
+      {/* ── KPI grid ── */}
+      <View style={s.kpiRow}>
+        <KpiCard
+          label="Disponibles"
+          value={stats?.available_vehicles}
+          sub={stats?.available_vehicles != null ? `sur ${stats.total_vehicles}` : null}
+          subColor={colors.slate}
+        />
+        <KpiCard
+          label="En location"
+          value={stats?.rented_vehicles}
+          sub={stats?.rented_vehicles != null ? `sur ${stats.total_vehicles}` : null}
+          subColor={colors.slate}
+        />
+        <KpiCard
+          label="Retours auj."
+          value={returnsToday}
+          sub={returnsToday > 0 ? 'à traiter' : 'aucun'}
+          subColor={returnsToday > 0 ? colors.warning : colors.slate}
+        />
+        <KpiCard
+          label="En retard"
+          value={overdue}
+          sub={overdue > 0 ? 'urgent' : 'aucun'}
+          subColor={overdue > 0 ? colors.danger : colors.slate}
+        />
+      </View>
+
+      {/* ── Revenue banner ── */}
+      <View style={s.revenueCard}>
+        <Text style={s.revenueLabel}>REVENUS CE MOIS</Text>
+        <Text style={s.revenueValue}>
+          {stats?.monthly_revenue
+            ? `${Number(stats.monthly_revenue).toLocaleString('fr-MA')} MAD`
+            : '— MAD'}
+        </Text>
+      </View>
+
+      {/* ── Quick actions (compact) ── */}
+      <View style={s.actionRow}>
+        <TouchableOpacity
+          style={s.btnPrimary}
+          onPress={() => navigation.navigate('NewRental')}
+          activeOpacity={0.85}
+        >
+          <Text style={s.btnPrimaryText}>+ Nouveau contrat</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={s.btnSecondary}
+          onPress={() => navigation.navigate('RestitutionPicker')}
+          activeOpacity={0.85}
+        >
+          <Text style={s.btnSecondaryText}>Restituer</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* ── Active contracts ── */}
+      <View style={s.sectionHeader}>
+        <Eyebrow>Contrats actifs</Eyebrow>
+        <Text style={s.sectionCount}>{contracts.length}</Text>
+      </View>
+
+      {contracts.map(c => {
+        const days = daysLeft(c.return_date)
+        const isToday   = days === 0
+        const isOverdue = days !== null && days < 0
+
+        return (
+          <TouchableOpacity
+            key={c.id}
+            style={s.contractCard}
+            activeOpacity={0.75}
+            onPress={() => navigation.navigate('RestitutionWizard', { contract: c })}
+          >
+            <View style={s.contractTop}>
+              <Text style={s.contractNum}>{c.contract_number}</Text>
+              {isOverdue ? (
+                <View style={[s.pill, s.pillDanger]}>
+                  <Text style={[s.pillText, { color: colors.danger }]}>
+                    {Math.abs(days)}j de retard
+                  </Text>
+                </View>
+              ) : isToday ? (
+                <View style={[s.pill, s.pillWarning]}>
+                  <Text style={[s.pillText, { color: colors.warning }]}>Retour auj.</Text>
+                </View>
+              ) : days !== null ? (
+                <View style={[s.pill, s.pillOk]}>
+                  <Text style={[s.pillText, { color: colors.success }]}>J+{days}</Text>
+                </View>
+              ) : (
+                <View style={[s.pill, s.pillOk]}>
+                  <Text style={[s.pillText, { color: colors.success }]}>Actif</Text>
+                </View>
+              )}
+            </View>
+            <Text style={s.contractClient}>
+              {c.client_name || '—'}
+              {c.vehicle_plate ? ` · ${c.vehicle_plate}` : ''}
+            </Text>
+            <View style={s.contractBottom}>
+              <Text style={s.contractDates}>
+                {fmtDate(c.pickup_date)} → {fmtDate(c.return_date)}
+              </Text>
+              <Text style={s.contractAmount}>
+                {Number(c.total_amount || 0).toLocaleString('fr-MA')} MAD
+              </Text>
+            </View>
+          </TouchableOpacity>
+        )
+      })}
+
+      {contracts.length === 0 && (
+        <View style={s.emptyWrap}>
+          <Text style={s.emptyIcon}>📋</Text>
+          <Text style={s.empty}>Aucun contrat actif</Text>
+        </View>
+      )}
+
+      <View style={{ height: spacing.xl }} />
     </ScrollView>
   )
 }
 
+// ── Styles ─────────────────────────────────────────────────────────────────
+
 const s = StyleSheet.create({
-  container:      { flex: 1, backgroundColor: '#0f0f1a' },
-  header:         { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20, paddingTop: 56 },
-  title:          { color: '#fff', fontSize: 22, fontWeight: '700' },
-  subtitle:       { color: '#888', fontSize: 13, marginTop: 2 },
-  logoutBtn:      { backgroundColor: '#1a1a2e', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6 },
-  logoutText:     { color: '#e94560', fontSize: 13, fontWeight: '600' },
-  kpiRow:         { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 12, gap: 10 },
-  kpi:            { flex: 1, minWidth: '45%', backgroundColor: '#1a1a2e', borderRadius: 12, padding: 16, borderLeftWidth: 3 },
-  kpiValue:       { color: '#fff', fontSize: 26, fontWeight: '700' },
-  kpiLabel:       { color: '#888', fontSize: 12, marginTop: 4 },
-  revenueCard:    { margin: 16, backgroundColor: '#1a1a2e', borderRadius: 12, padding: 20, alignItems: 'center' },
-  revenueLabel:   { color: '#888', fontSize: 13 },
-  revenueValue:   { color: '#e94560', fontSize: 28, fontWeight: '800', marginTop: 4 },
-  sectionTitle:   { color: '#fff', fontSize: 16, fontWeight: '700', paddingHorizontal: 16, marginBottom: 8 },
-  contractCard:   { backgroundColor: '#1a1a2e', marginHorizontal: 16, marginBottom: 10, borderRadius: 12, padding: 16 },
-  contractNum:    { color: '#fff', fontWeight: '700', fontSize: 15 },
-  contractDetail: { color: '#888', fontSize: 13, marginTop: 3 },
-  contractAmount: { color: '#10b981', fontWeight: '700', fontSize: 16, marginTop: 8 },
-  badge:          { backgroundColor: '#e9456022', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 },
-  badgeText:      { color: '#e94560', fontSize: 11, fontWeight: '600' },
-  empty:          { color: '#555', textAlign: 'center', padding: 20 },
+  container: { flex: 1, backgroundColor: colors.canvas },
+
+  // Header
+  header: {
+    flexDirection:    'row',
+    justifyContent:   'space-between',
+    alignItems:       'center',
+    paddingHorizontal: spacing.lg,
+    paddingTop:        56,
+    paddingBottom:     spacing.md,
+  },
+  greeting: {
+    fontFamily:    fonts.regular,
+    fontSize:      14,
+    color:         colors.slate,
+    letterSpacing: -0.1,
+    marginBottom:  2,
+  },
+  agencyName: {
+    ...typography.screenTitle,
+  },
+  menuBtn: {
+    width:           40,
+    height:          40,
+    borderRadius:    radius.pill,
+    backgroundColor: colors.white,
+    borderWidth:     1,
+    borderColor:     colors.borderStrong,
+    justifyContent:  'center',
+    alignItems:      'center',
+  },
+
+  // Eyebrow
+  eyebrowRow:  { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 },
+  eyebrowDot:  { width: 5, height: 5, borderRadius: 3, backgroundColor: colors.signalSoft },
+  eyebrowText: { ...typography.eyebrow },
+
+  // Alert strip
+  alertStrip: {
+    marginHorizontal: spacing.md,
+    marginBottom:     spacing.sm,
+    backgroundColor:  'rgba(186, 117, 23, 0.10)',
+    borderRadius:     radius.button,
+    borderWidth:      0.5,
+    borderColor:      'rgba(186, 117, 23, 0.30)',
+    paddingVertical:  10,
+    paddingHorizontal: spacing.md,
+  },
+  alertText: {
+    fontFamily: fonts.medium,
+    fontSize:   13,
+    color:      '#854F0B',
+    letterSpacing: -0.1,
+  },
+
+  // KPI grid
+  kpiRow: {
+    flexDirection:    'row',
+    flexWrap:         'wrap',
+    paddingHorizontal: spacing.md,
+    gap:              10,
+    marginBottom:     spacing.sm,
+  },
+  kpi: {
+    flexBasis:       '48%',
+    flexGrow:        0,
+    flexShrink:      0,
+    backgroundColor: colors.white,
+    borderRadius:    radius.card,
+    padding:         spacing.md,
+    borderWidth:     1,
+    borderColor:     colors.border,
+  },
+  kpiValue: {
+    fontFamily:    fonts.medium,
+    fontSize:      26,
+    lineHeight:    28,
+    letterSpacing: -0.56,
+    color:         colors.ink,
+  },
+  kpiLabel: { ...typography.cardSub, marginTop: 4 },
+  kpiSub:   {
+    fontFamily: fonts.medium,
+    fontSize:   11,
+    marginTop:  3,
+    color:      colors.slate,
+  },
+
+  // Revenue banner
+  revenueCard: {
+    marginHorizontal: spacing.md,
+    marginVertical:   spacing.md,
+    backgroundColor:  colors.ink,
+    borderRadius:     radius.hero,
+    padding:          spacing.lg,
+  },
+  revenueLabel: {
+    ...typography.eyebrow,
+    color: 'rgba(243,240,238,0.6)',
+  },
+  revenueValue: {
+    fontFamily:    fonts.medium,
+    fontSize:      32,
+    lineHeight:    36,
+    letterSpacing: -0.7,
+    color:         colors.canvas,
+    marginTop:     6,
+  },
+
+  // Quick actions — compact pill buttons
+  actionRow: {
+    flexDirection:    'row',
+    gap:              8,
+    marginHorizontal: spacing.md,
+    marginBottom:     spacing.lg,
+  },
+  btnPrimary: {
+    flex:              1,
+    backgroundColor:   colors.ink,
+    borderRadius:      radius.button,
+    borderWidth:       1,
+    borderColor:       colors.ink,
+    paddingVertical:   9,
+    paddingHorizontal: 12,
+    alignItems:        'center',
+  },
+  btnPrimaryText: {
+    color:         colors.canvas,
+    fontFamily:    fonts.medium,
+    fontSize:      13,
+    letterSpacing: -0.3,
+  },
+  btnSecondary: {
+    flex:              1,
+    backgroundColor:   colors.white,
+    borderRadius:      radius.button,
+    borderWidth:       1,
+    borderColor:       colors.ink,
+    paddingVertical:   9,
+    paddingHorizontal: 12,
+    alignItems:        'center',
+  },
+  btnSecondaryText: {
+    color:         colors.ink,
+    fontFamily:    fonts.regular,
+    fontSize:      13,
+    letterSpacing: -0.3,
+  },
+
+  // Section header
+  sectionHeader: {
+    flexDirection:    'row',
+    justifyContent:   'space-between',
+    alignItems:       'flex-end',
+    paddingHorizontal: spacing.md,
+    marginBottom:     spacing.sm,
+  },
+  sectionCount: {
+    fontFamily: fonts.bold,
+    fontSize:   13,
+    color:      colors.slate,
+  },
+
+  // Contract cards
+  contractCard: {
+    backgroundColor:  colors.white,
+    marginHorizontal: spacing.md,
+    marginBottom:     8,
+    borderRadius:     radius.card,
+    padding:          spacing.md,
+    borderWidth:      1,
+    borderColor:      colors.border,
+  },
+  contractTop: {
+    flexDirection:  'row',
+    justifyContent: 'space-between',
+    alignItems:     'center',
+    marginBottom:   4,
+  },
+  contractNum:    { ...typography.cardTitle },
+  contractClient: { ...typography.cardSub, marginBottom: 8 },
+  contractBottom: {
+    flexDirection:  'row',
+    justifyContent: 'space-between',
+    alignItems:     'center',
+    gap:            12,
+  },
+  contractDates:  { color: colors.slate, fontFamily: fonts.regular, fontSize: 13, flexShrink: 1 },
+  contractAmount: { color: colors.ink, fontFamily: fonts.medium, fontSize: 15, letterSpacing: -0.3, flexShrink: 0 },
+
+  // Status pills
+  pill: {
+    borderRadius:    radius.pill,
+    paddingHorizontal: 9,
+    paddingVertical: 2,
+  },
+  pillOk:      { backgroundColor: 'rgba(30,127,58,0.10)' },
+  pillWarning: { backgroundColor: 'rgba(207,69,0,0.10)' },
+  pillDanger:  { backgroundColor: 'rgba(178,56,36,0.10)' },
+  pillText:    { fontFamily: fonts.bold, fontSize: 11 },
+
+  // Empty state
+  emptyWrap: { alignItems: 'center', paddingVertical: 40 },
+  emptyIcon: { fontSize: 36, marginBottom: 10 },
+  empty:     { color: colors.slate, fontSize: 14, fontFamily: fonts.regular },
 })
