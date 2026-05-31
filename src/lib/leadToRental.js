@@ -2,6 +2,8 @@
 // + (possibly edited) extracted_data into the shape consumed by Step1 of the
 // rental wizard.
 
+import { isLidJid } from './phoneFormat.js'
+
 const NATIONALITY_MAP = {
   MAR: 'Marocain', FRA: 'Français', ESP: 'Espagnol', ITA: 'Italien', DEU: 'Allemand',
   GBR: 'Britannique', BEL: 'Belge', CHE: 'Suisse', NLD: 'Néerlandais', PRT: 'Portugais',
@@ -45,7 +47,10 @@ export function buildRentalPrefill(lead, extractedData) {
     licenseExpiry,
     passportNumber,
     passportExpiry,
-    phone: lead?.source === 'whatsapp'
+    // WhatsApp LIDs (e.g. "84139063677034@lid") are privacy pseudonyms, not
+    // dialable numbers. Leaving phone empty forces the operator to ask the
+    // client for their real number before Step 4 sends the signature SMS.
+    phone: lead?.source === 'whatsapp' && !isLidJid(lead.sender_id)
       ? (lead.sender_id || '').replace('whatsapp:', '').replace(/@.*$/, '')
       : '',
     email: lead?.source === 'gmail' ? (lead.sender_id || '') : '',

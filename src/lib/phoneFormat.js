@@ -35,10 +35,21 @@ const COUNTRY_CODES = [
   '7',
 ]
 
+// v1.14.17: WhatsApp LIDs are privacy pseudonyms, NOT phone numbers. Callers
+// must short-circuit before treating the JID as dialable / SMS-able.
+export function isLidJid(senderId) {
+  return typeof senderId === 'string' && /@lid$/i.test(senderId)
+}
+
 export function formatPhone(senderId) {
   if (!senderId || typeof senderId !== 'string') return ''
 
-  const isWhatsAppJid = /@(s\.whatsapp\.net|lid|c\.us)$/i.test(senderId)
+  // LID = privacy pseudonym, do NOT prefix with country code (the digits
+  // happen to look E.164 but are not a phone — e.g. "84139063677034@lid"
+  // is NOT a Vietnamese number).
+  if (isLidJid(senderId)) return 'Numéro masqué (WhatsApp)'
+
+  const isWhatsAppJid = /@(s\.whatsapp\.net|c\.us)$/i.test(senderId)
   if (senderId.includes('@') && !isWhatsAppJid) return senderId
 
   const localPart = senderId.split('@')[0]
