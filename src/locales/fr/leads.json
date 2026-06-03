@@ -65,6 +65,12 @@
   "prolongationRefuse": "Refuser",
   "prolongationCTA": "Prolonger contrat →",
   "prolongationLinkedContract": "Contrat {{number}} — fin {{end}} — {{client}}",
+  "prolongationContractNumber": "Numéro de contrat",
+  "prolongationContractStart": "Date de début",
+  "prolongationContractInitialEnd": "Date de fin initiale",
+  "prolongationConflictTitle": "⚠ Véhicule indisponible pour la prolongation",
+  "prolongationConflictDetail": "{{vehicle}} est déjà loué du {{start}} au {{end}}. Proposez un autre véhicule via Devis Rapide.",
+  "prolongationOpenSmartQuote": "Proposer un autre véhicule",
   "prolongationPickContract": "Quel contrat prolonger ?",
   "quote": {
     "title": "Devis rapide",

@@ -5,7 +5,16 @@ import {
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useTranslation } from 'react-i18next'
-import { getLead, updateLeadStatus, updateLeadExtracted, getContractById } from '../lib/db'
+import { getLead, updateLeadStatus, updateLeadExtracted, getContractById, findVehicleConflicts } from '../lib/db'
+
+// Add `days` to an ISO date string (YYYY-MM-DD). Returns null if invalid.
+function addDaysIso(iso, days) {
+  if (!iso || !Number.isFinite(days)) return null
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return null
+  d.setUTCDate(d.getUTCDate() + days)
+  return d.toISOString().slice(0, 10)
+}
 import { formatPhone } from '../lib/phoneFormat'
 import { colors, radius, spacing, fonts, typography } from '../theme'
 import SourceBadge from '../components/SourceBadge'
@@ -78,6 +87,9 @@ export default function LeadDetailScreen({ route, navigation }) {
   const [status, setStatus]   = useState(null)
   const [linkedContract, setLinkedContract] = useState(null)
   const [pickedContractId, setPickedContractId] = useState('')
+  // Vehicle-conflict state for the prolongation extension window.
+  const [vehicleConflicts, setVehicleConflicts] = useState([])
+  const [showSmartQuoteFallback, setShowSmartQuoteFallback] = useState(false)
 
   async function load() {
     try {
@@ -109,6 +121,30 @@ export default function LeadDetailScreen({ route, navigation }) {
     return () => { cancelled = true }
   }, [lead?.prolongation_target_contract_id, pickedContractId])
 
+  // Conflict detection — runs once we have the contract being extended and
+  // can derive an extension window [linkedContract.return_date, newEnd]:
+  //   - newEnd = extracted.end_date if present
+  //   - else   = linkedContract.return_date + extracted.requested_extra_days
+  //   - else   = no window, silently skip
+  // Conflicts = other status='active' contracts on the same vehicle whose
+  // [pickup_date, return_date] overlaps the extension window.
+  useEffect(() => {
+    if (extracted.classification !== 'prolongation') { setVehicleConflicts([]); return }
+    if (!linkedContract?.vehicle_id || !linkedContract?.return_date) { setVehicleConflicts([]); return }
+    const start = linkedContract.return_date.slice(0, 10)
+    let end = extracted.end_date || null
+    if (!end && Number.isFinite(Number(extracted.requested_extra_days))) {
+      end = addDaysIso(start, Number(extracted.requested_extra_days))
+    }
+    if (!end) { setVehicleConflicts([]); return }
+    let cancelled = false
+    ;(async () => {
+      const rows = await findVehicleConflicts(linkedContract.vehicle_id, start, end, linkedContract.id)
+      if (!cancelled) setVehicleConflicts(rows)
+    })()
+    return () => { cancelled = true }
+  }, [extracted.classification, extracted.end_date, extracted.requested_extra_days, linkedContract?.id, linkedContract?.vehicle_id, linkedContract?.return_date])
+
   function handleChange(key, val) {
     setExtracted(prev => ({ ...prev, [key]: val }))
   }
@@ -139,6 +175,15 @@ export default function LeadDetailScreen({ route, navigation }) {
 
   function handleConvert() {
     if (!lead) return
+    // Defense-in-depth: prolongation leads must NEVER end up in the new-rental
+    // wizard — that would create a brand-new contract instead of extending the
+    // existing one. The CTA bar already gates by classification, but if any
+    // path ever calls handleConvert with a prolongation lead, bail loudly.
+    const cls = extracted?.classification || lead?.classification
+    if (cls === 'prolongation') {
+      console.warn('[LeadDetail] handleConvert blocked — prolongation lead uses Prolonger contrat CTA', leadId)
+      return
+    }
     const prefill = buildRentalPrefill(lead, extracted)
     updateLeadStatus(leadId, 'processed').catch(() => {})
     navigation.replace('NewRental', { prefill })
@@ -236,14 +281,63 @@ export default function LeadDetailScreen({ route, navigation }) {
               {extracted.classification === 'prolongation' && (
                 <View style={s.prolongCard}>
                   {linkedContract ? (
-                    <Text style={s.prolongLine}>
-                      {t('prolongationLinkedContract', {
-                        defaultValue: 'Contrat {{number}} — fin {{end}} — {{client}}',
-                        number: linkedContract.contract_number || '—',
-                        end: linkedContract.return_date?.slice(0, 10) || '—',
-                        client: linkedContract.client_name || '—',
-                      })}
-                    </Text>
+                    <View>
+                      <Text style={[s.prolongLine, { marginBottom: spacing.xs }]}>
+                        {t('prolongationLinkedContract', {
+                          defaultValue: 'Contrat {{number}} — fin {{end}} — {{client}}',
+                          number: linkedContract.contract_number || '—',
+                          end: linkedContract.return_date?.slice(0, 10) || '—',
+                          client: linkedContract.client_name || '—',
+                        })}
+                      </Text>
+                      <View style={s.prolongDatesGrid}>
+                        <Text style={s.prolongDateLabel}>{t('prolongationContractNumber', { defaultValue: 'Numéro de contrat' })}</Text>
+                        <Text style={s.prolongDateValue}>{linkedContract.contract_number || '—'}</Text>
+                        <Text style={s.prolongDateLabel}>{t('prolongationContractStart', { defaultValue: 'Date de début' })}</Text>
+                        <Text style={s.prolongDateValue}>{linkedContract.pickup_date?.slice(0, 10) || '—'}</Text>
+                        <Text style={s.prolongDateLabel}>{t('prolongationContractInitialEnd', { defaultValue: 'Date de fin initiale' })}</Text>
+                        <Text style={s.prolongDateValue}>{linkedContract.return_date?.slice(0, 10) || '—'}</Text>
+                      </View>
+
+                      {vehicleConflicts.length > 0 && (
+                        <View style={s.conflictBox}>
+                          <Text style={s.conflictTitle}>
+                            {t('prolongationConflictTitle', { defaultValue: '⚠ Véhicule indisponible pour la prolongation' })}
+                          </Text>
+                          <Text style={s.conflictDetail}>
+                            {t('prolongationConflictDetail', {
+                              defaultValue: '{{vehicle}} est déjà loué du {{start}} au {{end}}. Proposez un autre véhicule via Devis Rapide.',
+                              vehicle: linkedContract.vehicle_label || '—',
+                              start: vehicleConflicts[0].pickup_date?.slice(0, 10) || '—',
+                              end: vehicleConflicts[0].return_date?.slice(0, 10) || '—',
+                            })}
+                          </Text>
+                          {!showSmartQuoteFallback && (
+                            <TouchableOpacity
+                              onPress={() => setShowSmartQuoteFallback(true)}
+                              style={s.conflictCta}
+                              activeOpacity={0.8}
+                            >
+                              <Text style={s.conflictCtaText}>
+                                {t('prolongationOpenSmartQuote', { defaultValue: 'Proposer un autre véhicule' })}
+                              </Text>
+                            </TouchableOpacity>
+                          )}
+                        </View>
+                      )}
+
+                      {showSmartQuoteFallback && vehicleConflicts.length > 0 && (
+                        <View style={{ marginTop: spacing.md }}>
+                          <SmartQuotePanel
+                            lead={{ ...lead, status, extracted_data: extracted }}
+                            onSent={() => {
+                              setShowSmartQuoteFallback(false)
+                              setStatus('offer_sent')
+                            }}
+                          />
+                        </View>
+                      )}
+                    </View>
                   ) : (extracted.prolongation_candidates?.length > 1) ? (
                     <View>
                       <Text style={s.prolongLabel}>{t('prolongationPickContract', { defaultValue: 'Quel contrat prolonger ?' })}</Text>
@@ -426,4 +520,12 @@ const s = StyleSheet.create({
   prolongOptionSelected: { borderColor: colors.info, backgroundColor: colors.info + '14' },
   prolongOptionText: { fontFamily: fonts.regular, fontSize: 13, color: colors.ink },
   prolongOptionTextSelected: { fontFamily: fonts.medium, color: colors.info },
+  prolongDatesGrid: { marginTop: spacing.xs, paddingTop: spacing.xs, borderTopWidth: 1, borderTopColor: colors.border },
+  prolongDateLabel: { fontFamily: fonts.regular, fontSize: 11, color: colors.slate, marginTop: 4 },
+  prolongDateValue: { fontFamily: fonts.medium, fontSize: 13, color: colors.ink },
+  conflictBox: { marginTop: spacing.md, padding: spacing.sm, borderRadius: radius.sm, borderWidth: 1, borderColor: 'rgba(245,158,11,0.45)', backgroundColor: 'rgba(245,158,11,0.10)' },
+  conflictTitle: { fontFamily: fonts.bold, fontSize: 12, color: '#B45309', marginBottom: 4 },
+  conflictDetail: { fontFamily: fonts.regular, fontSize: 12, color: colors.slate, marginBottom: spacing.sm },
+  conflictCta: { alignSelf: 'flex-start', paddingHorizontal: 12, paddingVertical: 6, borderRadius: radius.button, borderWidth: 1, borderColor: 'rgba(245,158,11,0.6)', backgroundColor: 'rgba(245,158,11,0.10)' },
+  conflictCtaText: { fontFamily: fonts.medium, fontSize: 12, color: '#B45309' },
 })

@@ -234,6 +234,41 @@ export async function sendQuoteOfferEmail(payload) {
   return apiPost('/email/send-offer', payload)
 }
 
+// Returns active contracts on `vehicleId` overlapping [startDate, endDate],
+// excluding `excludeContractId` so a contract doesn't flag itself. Same
+// overlap predicate as getAvailableVehicles below (and the web app's
+// findVehicleConflicts) — half-open: a contract ending the same day a new
+// one starts is NOT a conflict.
+//
+// Used by LeadDetailScreen to detect whether the original car attached to a
+// prolongation request is already booked for the extension window; if so,
+// the agent gets an amber warning + a smart-quote fallback to propose
+// another available vehicle.
+export async function findVehicleConflicts(vehicleId, startDate, endDate, excludeContractId) {
+  if (!vehicleId || !startDate || !endDate) return []
+  const agencyId = await getAgencyId()
+  if (!agencyId) return []
+  let q = supabase
+    .from('contracts')
+    .select('id, contract_number, pickup_date, return_date, client_name, vehicle_id')
+    .eq('agency_id', agencyId)
+    .eq('vehicle_id', vehicleId)
+    .eq('status', 'active')
+    .lt('pickup_date', endDate)
+    .gt('return_date', startDate)
+  if (excludeContractId) q = q.neq('id', excludeContractId)
+  const { data, error } = await q
+  if (error) { console.error('[db] findVehicleConflicts', error); return [] }
+  return (data || []).map(c => ({
+    id: c.id,
+    contract_number: c.contract_number,
+    pickup_date: c.pickup_date,
+    return_date: c.return_date,
+    client_name: c.client_name,
+    vehicle_id: c.vehicle_id,
+  }))
+}
+
 // Vehicles available between [startDate, endDate]. If dates are missing,
 // returns vehicles with status='available'. Mirrors web's getAvailableVehicles
 // — overlap rule: contract.pickup_date < endDate AND contract.return_date > startDate.
