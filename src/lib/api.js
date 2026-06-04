@@ -1,10 +1,24 @@
 import Constants from 'expo-constants'
 import { supabase } from './supabase'
 
-const BASE_URL =
+// v1.14.24: the previous `'http://localhost:3001'` fallback was a footgun —
+// a production build that shipped without `EXPO_PUBLIC_API_URL` would
+// silently send every request to the device's localhost (no listener →
+// `Network request failed` toasts with no clue why). Now the fallback is
+// only allowed in dev (`__DEV__ === true`); a release build with no
+// configured API URL throws at module load so we catch it at QA time.
+const _configuredBaseUrl =
   Constants.expoConfig?.extra?.apiBaseUrl ||
   process.env.EXPO_PUBLIC_API_URL ||
-  'http://localhost:3001'
+  null
+
+if (!_configuredBaseUrl && !__DEV__) {
+  throw new Error(
+    '[api] EXPO_PUBLIC_API_URL (or expoConfig.extra.apiBaseUrl) is required in production builds'
+  )
+}
+
+const BASE_URL = _configuredBaseUrl || 'http://localhost:3001'
 
 export class ApiError extends Error {
   constructor(status, body) {

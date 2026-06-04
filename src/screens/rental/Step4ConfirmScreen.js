@@ -70,10 +70,18 @@ export default function Step4ConfirmScreen({ client, rental, photos, onBack, onD
         payment_method:  PAYMENT_METHOD_MAP[rental.paymentMethod] ?? rental.paymentMethod,
       })
 
-      // 3. Mark vehicle as rented
-      await saveVehicle({ ...rental.vehicle, status: 'rented' })
+      // v1.14.24: vehicle.status flip to 'rented' MOVED out of this step.
+      // Previously the car was flagged rented at this confirm-click, but the
+      // signing sheet still needed the agent to actively pick a channel.
+      // If they closed the sheet without sending OR the wizard was abandoned,
+      // the car stayed locked. The flip now happens in markVehicleRented()
+      // which is invoked from sendForSignature (success) AND skipSignature
+      // (agent chose "send later" — they still committed to the rental).
+      // Date-range double-booking protection is unaffected: the contract is
+      // already status='active' from step (2), so get_available_vehicles
+      // excludes the car from other agents' pickers via the overlap rule.
 
-      // 4. Open the sign channel sheet — agent picks how to send the
+      // 3. Open the sign channel sheet — agent picks how to send the
       //    unsigned contract PDF for the client's e-signature.
       setCreatedContractId(contractId)
       setSignOpen(true)
@@ -88,6 +96,21 @@ export default function Step4ConfirmScreen({ client, rental, photos, onBack, onD
     }
   }
 
+  // v1.14.24: deferred flip — invoked from both completion paths. Non-blocking:
+  // if the vehicle update fails (network / RLS), we still return success to
+  // the agent; worst case they fix the status manually from Fleet. The
+  // contract row is the source of truth for "is this car currently booked".
+  const markVehicleRented = async () => {
+    if (!rental?.vehicle) return
+    try {
+      if (rental.vehicle.status !== 'rented') {
+        await saveVehicle({ ...rental.vehicle, status: 'rented' })
+      }
+    } catch (vehErr) {
+      console.warn('[Step4] vehicle flip to rented non-blocking:', vehErr?.message)
+    }
+  }
+
   const sendForSignature = async (channel) => {
     if (!createdContractId) return
     if (channel === 'whatsapp' && !client?.phone) { Alert.alert('Téléphone manquant', "Ce client n'a pas de numéro."); return }
@@ -98,6 +121,8 @@ export default function Step4ConfirmScreen({ client, rental, photos, onBack, onD
       if (!pdf_base64) throw new Error('PDF vide reçu du serveur.')
       if (channel === 'whatsapp') await sendContractWhatsApp(createdContractId, pdf_base64)
       else                        await sendContractEmail(createdContractId, pdf_base64)
+      // Send succeeded — agent has committed. Flip the car.
+      await markVehicleRented()
       setSignOpen(false)
       setSuccess(true)
       setTimeout(() => { onDone() }, 1500)
@@ -106,7 +131,10 @@ export default function Step4ConfirmScreen({ client, rental, photos, onBack, onD
     } finally { setSending(null) }
   }
 
-  const skipSignature = () => {
+  const skipSignature = async () => {
+    // Agent chose "send later" — they still committed to the rental, so the
+    // car is leaving the lot. Flip before navigating away.
+    await markVehicleRented()
     setSignOpen(false)
     setSuccess(true)
     setTimeout(() => { onDone() }, 1000)

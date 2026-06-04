@@ -290,12 +290,17 @@ export async function getAvailableVehicles(startDate, endDate) {
       .map(v => ({ id: v.id, make: v.brand, model: v.model, plate: v.plate_number }))
   }
 
+  // v1.14.24: predicate aligned with web's `get_available_vehicles` RPC and
+  // `findVehicleConflicts` helper — both use `.eq('status', 'active')`.
+  // The prior `.neq('closed').neq('cancelled')` was broader (would block on
+  // draft / unknown statuses too), causing mobile and web to disagree about
+  // availability for the same vehicle + date range. Active-only matches the
+  // contract-state-machine documented in CLAUDE.md.
   const { data: overlapping, error: cErr } = await supabase
     .from('contracts')
     .select('vehicle_id, pickup_date, return_date')
     .eq('agency_id', agencyId)
-    .neq('status', 'closed')
-    .neq('status', 'cancelled')
+    .eq('status', 'active')
     .lt('pickup_date', endDate)
     .gt('return_date', startDate)
   if (cErr) { console.error('[db] getAvailableVehicles overlap', cErr); return [] }
