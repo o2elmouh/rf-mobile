@@ -3,7 +3,8 @@ import {
   View, Text, TextInput, ScrollView, StyleSheet,
   TouchableOpacity, ActivityIndicator, Alert,
 } from 'react-native'
-import { closeContractApi, saveInvoice } from '../../lib/db'
+import { closeContractApi, saveInvoice, getDepositByContract } from '../../lib/db'
+import { generateRentalInvoice, releaseDeposit } from '../../lib/accounting'
 import { generateUUID } from '../../lib/uuid'
 import { fmtDate } from '../../lib/dates'
 import { ApiError } from '../../lib/api'
@@ -67,6 +68,29 @@ export default function ClosureStep({ contract, returnData, aiResult, onDone }) 
           end_date:        returnDate,
           status:          'pending',
         })
+      }
+
+      // 3. Post the double-entry journal for the rental (non-blocking —
+      //    accounting must never block closure).
+      try {
+        await generateRentalInvoice(contract.id)
+      } catch (err) {
+        console.warn('[Restitution] generateRentalInvoice non-blocking:', err?.message)
+      }
+
+      // 4. Release any held deposit. Deductions map restitution fees onto
+      //    the chart of accounts so the journal stays consistent.
+      try {
+        const dep = await getDepositByContract(contract.id)
+        if (dep && dep.status === 'held') {
+          const deductions = [
+            extraKmFee > 0       ? { reason: 'Km supplémentaires', amount: extraKmFee,       accountCode: '3030' } : null,
+            parsedDamageFee > 0  ? { reason: 'Frais dommages',     amount: parsedDamageFee,  accountCode: '3020' } : null,
+          ].filter(Boolean)
+          await releaseDeposit({ depositId: dep.id, deductions })
+        }
+      } catch (err) {
+        console.warn('[Restitution] releaseDeposit non-blocking:', err?.message)
       }
 
       setLoading(false)

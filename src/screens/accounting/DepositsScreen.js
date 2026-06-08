@@ -2,20 +2,23 @@ import { useCallback, useEffect, useState } from 'react'
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity, RefreshControl, ActivityIndicator, Alert } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { useFocusEffect } from '@react-navigation/native'
-import { getDeposits, releaseDeposit, forfeitDeposit } from '../../lib/db'
+import { getDeposits } from '../../lib/db'
+import { releaseDeposit } from '../../lib/accounting'
 import { fmtDate } from '../../lib/dates'
 import { colors, radius, spacing, fonts, typography } from '../../theme'
 
 const STATUS_STYLE = {
-  held:       { hue: colors.signalSoft, label: 'Conservée' },
-  released:   { hue: colors.success,    label: 'Libérée' },
-  forfeited:  { hue: colors.danger,     label: 'Confisquée' },
+  held:                { hue: colors.signalSoft, label: 'Conservée' },
+  released:            { hue: colors.success,    label: 'Libérée' },
+  partially_released:  { hue: colors.signalSoft, label: 'Libérée (partielle)' },
+  retained:            { hue: colors.danger,     label: 'Retenue' },
+  forfeited:           { hue: colors.danger,     label: 'Confisquée' },
 }
 const FILTERS = [
   { key: 'all',       label: 'Toutes' },
   { key: 'held',      label: 'Conservées' },
   { key: 'released',  label: 'Libérées' },
-  { key: 'forfeited', label: 'Confisquées' },
+  { key: 'retained',  label: 'Retenues' },
 ]
 
 export default function DepositsScreen({ navigation }) {
@@ -34,24 +37,36 @@ export default function DepositsScreen({ navigation }) {
   useFocusEffect(useCallback(() => { load() }, [load]))
   const onRefresh = async () => { setRefreshing(true); await load(); setRefreshing(false) }
 
+  // "Libérer" = full refund, no deductions. releaseDeposit posts the
+  // balanced 2000-debit / 1200-credit journal in addition to flipping
+  // status — so the bilan stays consistent.
   function doRelease(id, label) {
     Alert.alert('Libérer la caution', `Libérer la caution ${label} ?`, [
       { text: 'Annuler', style: 'cancel' },
       { text: 'Libérer', onPress: async () => {
         setActing(id)
-        try { await releaseDeposit(id); await load() }
+        try { await releaseDeposit({ depositId: id, deductions: [] }); await load() }
         catch (e) { Alert.alert('Erreur', e?.message || 'Action impossible') }
         finally { setActing(null) }
       } },
     ])
   }
 
-  function doForfeit(id, label) {
-    Alert.alert('Confisquer la caution', `Confisquer ${label} ?`, [
+  // "Retenir" (was "Confisquer") = the agent keeps the full amount; we
+  // route it as a single deduction to 3020 so the journal balances and
+  // status lands on 'retained'.
+  function doRetain(id, label, amount) {
+    Alert.alert('Retenir la caution', `Retenir la totalité de ${label} ?`, [
       { text: 'Annuler', style: 'cancel' },
-      { text: 'Confisquer', style: 'destructive', onPress: async () => {
+      { text: 'Retenir', style: 'destructive', onPress: async () => {
         setActing(id)
-        try { await forfeitDeposit(id); await load() }
+        try {
+          await releaseDeposit({
+            depositId: id,
+            deductions: [{ reason: 'Retenue intégrale', amount: Number(amount) || 0, accountCode: '3020' }],
+          })
+          await load()
+        }
         catch (e) { Alert.alert('Erreur', e?.message || 'Action impossible') }
         finally { setActing(null) }
       } },
@@ -107,8 +122,8 @@ export default function DepositsScreen({ navigation }) {
                   <TouchableOpacity disabled={acting === d.id} onPress={() => doRelease(d.id, clientName)} style={s.btnPrimary} activeOpacity={0.8}>
                     <Text style={s.btnPrimaryText}>Libérer</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity disabled={acting === d.id} onPress={() => doForfeit(d.id, clientName)} style={s.btnGhost} activeOpacity={0.8}>
-                    <Text style={s.btnGhostText}>Confisquer</Text>
+                  <TouchableOpacity disabled={acting === d.id} onPress={() => doRetain(d.id, clientName, d.amount)} style={s.btnGhost} activeOpacity={0.8}>
+                    <Text style={s.btnGhostText}>Retenir</Text>
                   </TouchableOpacity>
                 </View>
               )}

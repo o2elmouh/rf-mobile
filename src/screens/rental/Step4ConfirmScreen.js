@@ -7,6 +7,7 @@ import {
   saveClient, saveContract, saveVehicle,
   getUnsignedPdfBase64, sendContractWhatsApp, sendContractEmail,
 } from '../../lib/db'
+import { holdDeposit } from '../../lib/accounting'
 import { generateUUID, generateContractNumber } from '../../lib/uuid'
 import { fmtDate } from '../../lib/dates'
 import { colors, radius, spacing, fonts, typography, btnPrimary, btnPrimaryText, btnSecondary, btnSecondaryText } from '../../theme'
@@ -69,6 +70,26 @@ export default function Step4ConfirmScreen({ client, rental, photos, onBack, onD
         mileage_start:   rental.mileageStart,
         payment_method:  PAYMENT_METHOD_MAP[rental.paymentMethod] ?? rental.paymentMethod,
       })
+
+      // Hold security deposit (non-blocking — accounting must never block
+      // the rental flow). Defaults to the vehicle's deposit_amount when
+      // the wizard didn't override it. Skip when 0.
+      try {
+        const depositAmount = Number(
+          rental?.deposit_amount ?? rental?.depositAmount ?? rental?.vehicle?.deposit_amount ?? 0
+        )
+        if (depositAmount > 0) {
+          await holdDeposit({
+            contractId:  contractId,
+            clientName:  fullName,
+            vehicleName: vehicleLabel,
+            amount:      depositAmount,
+            date:        rental.startDate || new Date().toISOString().slice(0, 10),
+          })
+        }
+      } catch (depErr) {
+        console.warn('[Step4] holdDeposit non-blocking:', depErr?.message)
+      }
 
       // v1.14.24: vehicle.status flip to 'rented' MOVED out of this step.
       // Previously the car was flagged rented at this confirm-click, but the

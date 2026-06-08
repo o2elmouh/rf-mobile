@@ -461,12 +461,48 @@ export async function getBorrowedFleet(startDate, endDate) {
 }
 
 // ── Deposits ───────────────────────────────────────────────────
-// Schema (verified from 001_initial_schema.sql):
-// id, agency_id, contract_id, client_id, amount, status (held|released|forfeited),
-// held_at, released_at, notes, created_at.
-// NOTE: Wave 4 doc mentions extra columns (deductions, transaction_id,
-// release_transaction_id, released_amount, etc). They are not in the verified
-// schema, so we don't read/write them — saves us from invented behavior.
+// Schema columns after the web migration `20260608_accounting_schema_fix.sql`
+// (applied to the shared Supabase project): id, agency_id, contract_id,
+// client_id, client_name, vehicle_name, amount, status
+// (held|released|partially_released|retained|forfeited),
+// held_at, released_at, deductions (jsonb), released_amount,
+// transaction_id, release_transaction_id, notes, created_at.
+
+function depositToDb(d) {
+  return {
+    id:                     d.id,
+    contract_id:            d.contractId  || d.contract_id  || null,
+    client_id:              d.clientId    || d.client_id    || null,
+    client_name:            d.clientName  || d.client_name  || null,
+    vehicle_name:           d.vehicleName || d.vehicle_name || null,
+    amount:                 Number(d.amount) || 0,
+    status:                 d.status || 'held',
+    held_at:                d.heldAt     || d.held_at     || null,
+    released_at:            d.releasedAt || d.released_at || null,
+    deductions:             d.deductions || [],
+    released_amount:        d.releasedAmount !== undefined ? Number(d.releasedAmount) : (d.released_amount !== undefined ? Number(d.released_amount) : 0),
+    transaction_id:         d.transactionId        || d.transaction_id        || null,
+    release_transaction_id: d.releaseTransactionId || d.release_transaction_id || null,
+    notes:                  d.notes || null,
+  }
+}
+
+function depositFromDb(row) {
+  if (!row) return row
+  return {
+    ...row,
+    contractId:           row.contract_id,
+    clientId:             row.client_id,
+    clientName:           row.client_name,
+    vehicleName:          row.vehicle_name,
+    heldAt:               row.held_at,
+    releasedAt:           row.released_at,
+    releasedAmount:       row.released_amount,
+    transactionId:        row.transaction_id,
+    releaseTransactionId: row.release_transaction_id,
+  }
+}
+
 export async function getDeposits(statusFilter = null) {
   const agencyId = await getAgencyId()
   if (!agencyId) return []
@@ -479,26 +515,43 @@ export async function getDeposits(statusFilter = null) {
   if (statusFilter) q = q.eq('status', statusFilter)
   const { data, error } = await q
   if (error) { console.error('[db] getDeposits', error); return [] }
-  return data || []
+  return (data || []).map(depositFromDb)
 }
 
-export async function releaseDeposit(id, notes) {
+export async function saveDeposit(deposit) {
+  const dbRow = depositToDb(deposit)
+  Object.keys(dbRow).forEach(k => dbRow[k] === undefined && delete dbRow[k])
+  const saved = await sbUpsert('deposits', dbRow)
+  return depositFromDb(saved)
+}
+
+export async function getDepositByContract(contractId) {
   const agencyId = await getAgencyId()
-  if (!agencyId) throw new Error('Not authenticated')
-  const patch = {
-    status: 'released',
-    released_at: new Date().toISOString(),
-  }
-  if (notes != null) patch.notes = notes
+  if (!agencyId) return null
   const { data, error } = await supabase
     .from('deposits')
-    .update(patch)
-    .eq('id', id)
+    .select('*')
     .eq('agency_id', agencyId)
-    .select()
-    .single()
+    .eq('contract_id', contractId)
+    .maybeSingle()
+  if (error) { console.error('[db] getDepositByContract', error); return null }
+  return data ? depositFromDb(data) : null
+}
+
+// Legacy status-flip path kept for the DepositsScreen "Libérer" / "Confisquer"
+// quick-actions. The full double-entry release lives in lib/accounting.js#releaseDeposit
+// which the restitution flow uses.
+export async function releaseDepositStatus(id, notes) {
+  const agencyId = await getAgencyId()
+  if (!agencyId) throw new Error('Not authenticated')
+  const patch = { status: 'released', released_at: new Date().toISOString() }
+  if (notes != null) patch.notes = notes
+  const { data, error } = await supabase
+    .from('deposits').update(patch)
+    .eq('id', id).eq('agency_id', agencyId)
+    .select().single()
   if (error) throw error
-  return data
+  return depositFromDb(data)
 }
 
 export async function forfeitDeposit(id, notes) {
@@ -507,26 +560,125 @@ export async function forfeitDeposit(id, notes) {
   const patch = { status: 'forfeited' }
   if (notes != null) patch.notes = notes
   const { data, error } = await supabase
-    .from('deposits')
-    .update(patch)
-    .eq('id', id)
-    .eq('agency_id', agencyId)
-    .select()
-    .single()
+    .from('deposits').update(patch)
+    .eq('id', id).eq('agency_id', agencyId)
+    .select().single()
   if (error) throw error
-  return data
+  return depositFromDb(data)
 }
 
-// ── Accounting (journal_entries, accounts) ─────────────────────
+// ── Accounting (accounts, transactions, journal_entries) ───────
+
+function accountToDb(a) {
+  return {
+    id:             a.id,
+    code:           a.code,
+    name:           a.name,
+    type:           a.type,
+    normal_balance: a.normalBalance || a.normal_balance,
+    category:       a.category || null,
+    is_system:      a.isSystem ?? a.is_system ?? false,
+  }
+}
+
+function accountFromDb(row) {
+  if (!row) return row
+  return { ...row, normalBalance: row.normal_balance, isSystem: row.is_system }
+}
+
 export async function getAccounts() {
   const agencyId = await getAgencyId()
   if (!agencyId) return []
   const { data, error } = await supabase
-    .from('accounts')
-    .select('*')
-    .eq('agency_id', agencyId)
+    .from('accounts').select('*').eq('agency_id', agencyId)
   if (error) { console.error('[db] getAccounts', error); return [] }
-  return data || []
+  return (data || []).map(accountFromDb)
+}
+
+export async function saveAccount(account) {
+  const dbRow = accountToDb(account)
+  Object.keys(dbRow).forEach(k => dbRow[k] === undefined && delete dbRow[k])
+  const saved = await sbUpsert('accounts', dbRow)
+  return accountFromDb(saved)
+}
+
+function transactionToDb(t) {
+  return {
+    id:           t.id,
+    reference:    t.reference   || null,
+    date:         t.date        || null,
+    description:  t.description || null,
+    type:         t.type        || 'manual',
+    total_amount: t.totalAmount !== undefined ? Number(t.totalAmount) : (t.total_amount !== undefined ? Number(t.total_amount) : null),
+    amount:       t.totalAmount !== undefined ? Number(t.totalAmount) : (t.amount !== undefined ? Number(t.amount) : null),
+    contract_id:  t.contractId  || t.contract_id  || null,
+    invoice_id:   t.invoiceId   || t.invoice_id   || null,
+  }
+}
+
+function transactionFromDb(row) {
+  if (!row) return row
+  return { ...row, totalAmount: row.total_amount, contractId: row.contract_id, invoiceId: row.invoice_id }
+}
+
+export async function getTransactions() {
+  const rows = await sbSelect('transactions')
+  return rows.map(transactionFromDb)
+}
+
+export async function saveTransaction(tx) {
+  const dbRow = transactionToDb(tx)
+  Object.keys(dbRow).forEach(k => dbRow[k] === undefined && delete dbRow[k])
+  // Auto-generate a TXN-YYYYMMDD-XXXX reference if missing (mirror web util).
+  if (!dbRow.reference) {
+    const stamp = (dbRow.date || new Date().toISOString().slice(0, 10)).replace(/-/g, '')
+    const rand  = Math.floor(Math.random() * 0xFFFF).toString(16).toUpperCase().padStart(4, '0')
+    dbRow.reference = `TXN-${stamp}-${rand}`
+  }
+  const saved = await sbUpsert('transactions', dbRow)
+  return transactionFromDb(saved)
+}
+
+function journalEntryToDb(e) {
+  return {
+    id:              e.id,
+    transaction_id:  e.transactionId  || e.transaction_id  || null,
+    transaction_ref: e.transactionRef || e.transaction_ref || null,
+    date:            e.date           || null,
+    account_code:    e.accountCode    || e.account_code    || null,
+    account_name:    e.accountName    || e.account_name    || null,
+    description:     e.description    || null,
+    debit:           Number(e.debit)  || 0,
+    credit:          Number(e.credit) || 0,
+  }
+}
+
+function journalEntryFromDb(row) {
+  if (!row) return row
+  return {
+    ...row,
+    transactionId:  row.transaction_id,
+    transactionRef: row.transaction_ref,
+    accountCode:    row.account_code,
+    accountName:    row.account_name,
+  }
+}
+
+export async function getEntriesForTransaction(txId) {
+  const rows = await sbSelect('journal_entries', { transaction_id: txId })
+  return rows.map(journalEntryFromDb)
+}
+
+export async function saveJournalEntries(entries) {
+  const agencyId = await getAgencyId()
+  if (!agencyId) return
+  const rows = entries.map(e => {
+    const r = journalEntryToDb(e)
+    Object.keys(r).forEach(k => r[k] === undefined && delete r[k])
+    return { ...r, agency_id: agencyId }
+  })
+  const { error } = await supabase.from('journal_entries').upsert(rows, { onConflict: 'id' })
+  if (error) throw error
 }
 
 // ── Reservations ───────────────────────────────────────────────
@@ -565,5 +717,6 @@ export async function getJournalEntries() {
     .order('date', { ascending: false })
     .limit(2000)
   if (error) { console.error('[db] getJournalEntries', error); return [] }
-  return data || []
+  return (data || []).map(journalEntryFromDb)
 }
+
